@@ -29,6 +29,19 @@ const int lightSensor4Pin = 35;
 unsigned long previousMillis = 0;
 const long interval = 250;
 
+volatile int interruptCounter;
+int totalInterruptCounter;
+ 
+hw_timer_t * timer = NULL;
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+ 
+
+void IRAM_ATTR onTimer() {
+  portENTER_CRITICAL_ISR(&timerMux);
+  interruptCounter++;
+  portEXIT_CRITICAL_ISR(&timerMux);
+ 
+}
 
 void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len){
   if(type == WS_EVT_CONNECT){
@@ -224,18 +237,25 @@ void setup(){
       Serial.printf("BodyEnd: %u\n", total);
   });
   server.begin();
-}
 
+  timer = timerBegin(0, 80, true);
+  timerAttachInterrupt(timer, &onTimer, true);
+  timerAlarmWrite(timer, 250000, true);
+  timerAlarmEnable(timer);
+}
 
 
 void loop(){
   ArduinoOTA.handle();
 
-  unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis >= interval) {
-    // save the last time you blinked the LED
-    previousMillis = currentMillis;
-    
+  if (interruptCounter > 0) {
+ 
+    portENTER_CRITICAL(&timerMux);
+    interruptCounter--;
+    portEXIT_CRITICAL(&timerMux);
+ 
+    totalInterruptCounter++;
+ 
     lightSensor1Value = analogRead(lightSensor1Pin);
     lightSensor2Value = analogRead(lightSensor2Pin);
     
@@ -248,5 +268,7 @@ void loop(){
     ws.textAll(jsonOutput);
 
     Serial.println(jsonOutput);
+ 
   }
+
 }
