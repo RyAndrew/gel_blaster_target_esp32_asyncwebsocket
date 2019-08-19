@@ -6,6 +6,7 @@
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <SPIFFSEditor.h>
+#include <Servo.h>
 
 #include <AsyncJson.h>
 #include <ArduinoJson.h>
@@ -15,6 +16,8 @@ AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 AsyncEventSource events("/events");
 
+const int LedStatusPin = 2;
+int LedStatusState = HIGH;
 
 int lightSensor1Value = 0;
 int lightSensor2Value = 0;
@@ -25,6 +28,21 @@ const int lightSensor1Pin = 36;
 const int lightSensor2Pin = 39;
 const int lightSensor3Pin = 34;
 const int lightSensor4Pin = 35;
+
+static const int servo1Pin = 32;
+static const int servo2Pin = 33;
+static const int servo3Pin = 25;
+static const int servo4Pin = 26;
+
+int servo1Counter = 0;
+int servo2Counter = 0;
+int servo3Counter = 0;
+int servo4Counter = 0;
+
+Servo servo1;
+Servo servo2;
+Servo servo3;
+Servo servo4;
 
 unsigned long previousMillis = 0;
 const long interval = 250;
@@ -126,6 +144,24 @@ const char* http_password = "admin";
 void setup(){
   Serial.begin(115200);
   Serial.setDebugOutput(true);
+
+  Serial.println("Booting");
+  
+  servo1.attach(servo1Pin,Servo::CHANNEL_NOT_ATTACHED, 0, 180, 0, 2400);
+  servo2.attach(servo2Pin,Servo::CHANNEL_NOT_ATTACHED, 0, 180, 0, 2400);
+  servo3.attach(servo3Pin,Servo::CHANNEL_NOT_ATTACHED, 0, 180, 0, 2400);
+  servo4.attach(servo4Pin,Servo::CHANNEL_NOT_ATTACHED, 0, 180, 0, 2400);
+
+  servo1.writeMicroseconds(800);
+  servo2.writeMicroseconds(800);
+  servo3.writeMicroseconds(800);
+  servo4.writeMicroseconds(800);
+  delay(100);
+  servo1.writeMicroseconds(0);
+  servo2.writeMicroseconds(0);
+  servo3.writeMicroseconds(0);
+  servo4.writeMicroseconds(0);
+  
   
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
@@ -242,25 +278,66 @@ void setup(){
   timerAttachInterrupt(timer, &onTimer, true);
   timerAlarmWrite(timer, 250000, true);
   timerAlarmEnable(timer);
+  
+  digitalWrite(LedStatusPin,  LedStatusState);
+
+  pinMode(LedStatusPin,OUTPUT);
 }
 
+int tempCounter = 0;
+int tempCounterReset = 4;
+int espTemp = 4;
 
-void loop(){
-  ArduinoOTA.handle();
+const int targetUpServoMs = 1800;
+const int targetDownServoMs = 800;
 
-  if (interruptCounter > 0) {
- 
-    portENTER_CRITICAL(&timerMux);
-    interruptCounter--;
-    portEXIT_CRITICAL(&timerMux);
- 
-    totalInterruptCounter++;
- 
+const int lightSensorTriggerMax = 350;
+
+void run250msloop(){
+
+  if(tempCounter==0){
+    espTemp = temperatureRead();
+    tempCounter = tempCounterReset;
+  }
+  tempCounter--;
+    
+    LedStatusState = not(LedStatusState);
+    digitalWrite(LedStatusPin,  LedStatusState);
+  
     lightSensor1Value = analogRead(lightSensor1Pin);
     lightSensor2Value = analogRead(lightSensor2Pin);
+
+    if(lightSensor1Value < lightSensorTriggerMax){
+      servo1Counter = 4;
+    }
+    if(servo1Counter>0){
+      servo1Counter--;
+      if(servo1Counter==3){
+      servo1.writeMicroseconds(targetUpServoMs);
+      }
+      if(servo1Counter==1){
+        servo1.writeMicroseconds(targetDownServoMs);
+      }
+    }
+
+
+    if(lightSensor2Value < lightSensorTriggerMax){
+      servo2Counter = 4;
+    }
+    if(servo2Counter>0){
+      servo2Counter--;
+      if(servo2Counter==3){
+      servo2.writeMicroseconds(targetUpServoMs);
+      }
+      if(servo2Counter==1){
+        servo2.writeMicroseconds(targetDownServoMs);
+      }
+    }
     
-    const int capacity = JSON_OBJECT_SIZE(2);
+    
+    const int capacity = JSON_OBJECT_SIZE(3);
     StaticJsonDocument<capacity> json;
+    json["espTemp"] = espTemp;
     json["lightSensor1"] = lightSensor1Value;
     json["lightSensor2"] = lightSensor2Value;
     char jsonOutput[64];
@@ -268,6 +345,19 @@ void loop(){
     ws.textAll(jsonOutput);
 
     Serial.println(jsonOutput);
+
+}
+
+void loop(){
+  ArduinoOTA.handle();
+
+  if (interruptCounter > 0) {
+ 
+    portENTER_CRITICAL(&timerMux);
+    interruptCounter = 0;
+    portEXIT_CRITICAL(&timerMux);
+
+    run250msloop();
  
   }
 
