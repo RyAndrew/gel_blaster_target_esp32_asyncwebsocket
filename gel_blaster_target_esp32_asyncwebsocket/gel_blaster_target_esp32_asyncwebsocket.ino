@@ -28,11 +28,15 @@ const int lightSensor1Pin = 36;
 const int lightSensor2Pin = 39;
 const int lightSensor3Pin = 34;
 const int lightSensor4Pin = 35;
+const int lightSensor5Pin = 32;
+const int lightSensor6Pin = 33;
 
-static const int servo1Pin = 32;
-static const int servo2Pin = 33;
-static const int servo3Pin = 25;
-static const int servo4Pin = 26;
+static const int servo1Pin = 25;
+static const int servo2Pin = 26;
+static const int servo3Pin = 27;
+static const int servo4Pin = 14;
+static const int servo5Pin = 12;
+static const int servo6Pin = 13;
 
 int servo1Counter = 0;
 int servo2Counter = 0;
