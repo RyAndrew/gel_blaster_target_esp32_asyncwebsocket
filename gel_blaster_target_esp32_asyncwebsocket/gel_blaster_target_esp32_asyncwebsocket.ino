@@ -11,7 +11,12 @@
 #include <AsyncJson.h>
 #include <ArduinoJson.h>
 
-// SKETCH BEGIN
+const char* ssid = "wifinamehere";
+const char* password = "wifipasswordhere";
+const char * hostName = "esp-async";
+const char* http_username = "admin";
+const char* http_password = "admin";
+
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 AsyncEventSource events("/events");
@@ -44,7 +49,7 @@ static const int servo6Pin = 13;
 
 struct target {
   uint8_t number;
-  uint8_t lightSensorValue;
+  uint16_t lightSensorValue;
   uint8_t lightSensorPin;
   uint8_t servoPin;
   uint8_t servoResetCounter;
@@ -149,13 +154,6 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
 }
 
 
-
-const char* ssid = "wifinamehere";
-const char* password = "wifipasswordhere";
-const char * hostName = "esp-async";
-const char* http_username = "admin";
-const char* http_password = "admin";
-
 void setup(){
   Serial.begin(115200);
   Serial.setDebugOutput(true);
@@ -171,8 +169,8 @@ void setup(){
     allTargets[i].servo.writeMicroseconds(0);
   }
   
-  analogReadResolution(11);
-  analogSetAttenuation(ADC_6db); 
+  //analogReadResolution(11);
+  //analogSetAttenuation(ADC_6db);
   
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
