@@ -19,17 +19,21 @@ AsyncEventSource events("/events");
 const int LedStatusPin = 2;
 int LedStatusState = HIGH;
 
-int lightSensor1Value = 0;
-int lightSensor2Value = 0;
-int lightSensor3Value = 0;
-int lightSensor4Value = 0;
+int tempCounter = 0;
+int tempCounterReset = 4;
+int espTemp = 4;
+
+const int targetUpServoMs = 1800;
+const int targetDownServoMs = 800;
+
+const int lightSensorTriggerMax = 100;
 
 const int lightSensor1Pin = 36;
 const int lightSensor2Pin = 39;
 const int lightSensor3Pin = 34;
 const int lightSensor4Pin = 35;
 const int lightSensor5Pin = 32;
-const int lightSensor6Pin = 33;
+const int lightSensor6Pin = 22;
 
 static const int servo1Pin = 25;
 static const int servo2Pin = 26;
@@ -38,18 +42,25 @@ static const int servo4Pin = 14;
 static const int servo5Pin = 12;
 static const int servo6Pin = 13;
 
-int servo1Counter = 0;
-int servo2Counter = 0;
-int servo3Counter = 0;
-int servo4Counter = 0;
+struct target {
+  uint8_t number;
+  uint8_t lightSensorValue;
+  uint8_t lightSensorPin;
+  uint8_t servoPin;
+  uint8_t servoResetCounter;
+  Servo servo;
+};
 
-Servo servo1;
-Servo servo2;
-Servo servo3;
-Servo servo4;
+static const uint8_t targetCount = 6;
 
-unsigned long previousMillis = 0;
-const long interval = 250;
+target allTargets[targetCount] = {
+  { 1, 0, lightSensor1Pin, servo1Pin, 0 },
+  { 2, 0, lightSensor2Pin, servo2Pin, 0 },
+  { 3, 0, lightSensor3Pin, servo3Pin, 0 },
+  { 4, 0, lightSensor4Pin, servo4Pin, 0 },
+  { 5, 0, lightSensor5Pin, servo5Pin, 0 },
+  { 6, 0, lightSensor6Pin, servo6Pin, 0 }
+};
 
 volatile int interruptCounter;
 int totalInterruptCounter;
@@ -150,22 +161,18 @@ void setup(){
   Serial.setDebugOutput(true);
 
   Serial.println("Booting");
-  
-  servo1.attach(servo1Pin,Servo::CHANNEL_NOT_ATTACHED, 0, 180, 0, 2400);
-  servo2.attach(servo2Pin,Servo::CHANNEL_NOT_ATTACHED, 0, 180, 0, 2400);
-  servo3.attach(servo3Pin,Servo::CHANNEL_NOT_ATTACHED, 0, 180, 0, 2400);
-  servo4.attach(servo4Pin,Servo::CHANNEL_NOT_ATTACHED, 0, 180, 0, 2400);
 
-  servo1.writeMicroseconds(800);
-  servo2.writeMicroseconds(800);
-  servo3.writeMicroseconds(800);
-  servo4.writeMicroseconds(800);
+  for (int i = 0; i < targetCount; i++){
+    allTargets[i].servo.attach(allTargets[i].servoPin,Servo::CHANNEL_NOT_ATTACHED, 0, 180, 0, 2400);
+    allTargets[i].servo.writeMicroseconds(800);
+  }
   delay(100);
-  servo1.writeMicroseconds(0);
-  servo2.writeMicroseconds(0);
-  servo3.writeMicroseconds(0);
-  servo4.writeMicroseconds(0);
+  for (int i = 0; i < targetCount; i++){
+    allTargets[i].servo.writeMicroseconds(0);
+  }
   
+  analogReadResolution(11);
+  analogSetAttenuation(ADC_6db); 
   
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
@@ -288,14 +295,6 @@ void setup(){
   pinMode(LedStatusPin,OUTPUT);
 }
 
-int tempCounter = 0;
-int tempCounterReset = 4;
-int espTemp = 4;
-
-const int targetUpServoMs = 1800;
-const int targetDownServoMs = 800;
-
-const int lightSensorTriggerMax = 350;
 
 void run250msloop(){
 
@@ -307,44 +306,33 @@ void run250msloop(){
     
     LedStatusState = not(LedStatusState);
     digitalWrite(LedStatusPin,  LedStatusState);
-  
-    lightSensor1Value = analogRead(lightSensor1Pin);
-    lightSensor2Value = analogRead(lightSensor2Pin);
 
-    if(lightSensor1Value < lightSensorTriggerMax){
-      servo1Counter = 4;
-    }
-    if(servo1Counter>0){
-      servo1Counter--;
-      if(servo1Counter==3){
-      servo1.writeMicroseconds(targetUpServoMs);
+    for (int i = 0; i < targetCount; i++){
+      allTargets[i].lightSensorValue = analogRead(allTargets[i].lightSensorPin);
+      if(allTargets[i].lightSensorValue < lightSensorTriggerMax){
+        allTargets[i].servoResetCounter = 4;
       }
-      if(servo1Counter==1){
-        servo1.writeMicroseconds(targetDownServoMs);
-      }
-    }
-
-
-    if(lightSensor2Value < lightSensorTriggerMax){
-      servo2Counter = 4;
-    }
-    if(servo2Counter>0){
-      servo2Counter--;
-      if(servo2Counter==3){
-      servo2.writeMicroseconds(targetUpServoMs);
-      }
-      if(servo2Counter==1){
-        servo2.writeMicroseconds(targetDownServoMs);
+      if(allTargets[i].servoResetCounter>0){
+        allTargets[i].servoResetCounter--;
+        if(allTargets[i].servoResetCounter==3){
+          allTargets[i].servo.writeMicroseconds(targetUpServoMs);
+        }
+        if(allTargets[i].servoResetCounter==1){
+          allTargets[i].servo.writeMicroseconds(targetDownServoMs);
+        }
       }
     }
     
-    
-    const int capacity = JSON_OBJECT_SIZE(3);
+    const int capacity = JSON_OBJECT_SIZE(7);
     StaticJsonDocument<capacity> json;
     json["espTemp"] = espTemp;
-    json["lightSensor1"] = lightSensor1Value;
-    json["lightSensor2"] = lightSensor2Value;
-    char jsonOutput[64];
+    json["lightSensor1"] = allTargets[1].lightSensorValue;
+    json["lightSensor2"] = allTargets[2].lightSensorValue;
+    json["lightSensor3"] = allTargets[3].lightSensorValue;
+    json["lightSensor4"] = allTargets[4].lightSensorValue;
+    json["lightSensor5"] = allTargets[5].lightSensorValue;
+    json["lightSensor6"] = allTargets[6].lightSensorValue;
+    char jsonOutput[128];
     serializeJson(json, jsonOutput);
     ws.textAll(jsonOutput);
 
