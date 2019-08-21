@@ -28,24 +28,24 @@ int tempCounter = 0;
 int tempCounterReset = 4;
 int espTemp = 4;
 
-const int targetUpServoMs = 1800;
-const int targetDownServoMs = 800;
+const uint8_t targetUpServoMs = 1800;
+const uint8_t targetDownServoMs = 800;
 
-const int lightSensorTriggerMax = 100;
+const uint8_t lightSensorTriggerMax = 100;
 
-const int lightSensor1Pin = 36;
-const int lightSensor2Pin = 39;
-const int lightSensor3Pin = 34;
-const int lightSensor4Pin = 35;
-const int lightSensor5Pin = 32;
-const int lightSensor6Pin = 22;
+const uint8_t lightSensor1Pin = 36;
+const uint8_t lightSensor2Pin = 39;
+const uint8_t lightSensor3Pin = 34;
+const uint8_t lightSensor4Pin = 35;
+const uint8_t lightSensor5Pin = 32;
+const uint8_t lightSensor6Pin = 22;
 
-static const int servo1Pin = 25;
-static const int servo2Pin = 26;
-static const int servo3Pin = 27;
-static const int servo4Pin = 14;
-static const int servo5Pin = 12;
-static const int servo6Pin = 13;
+static const uint8_t servo1Pin = 25;
+static const uint8_t servo2Pin = 26;
+static const uint8_t servo3Pin = 27;
+static const uint8_t servo4Pin = 14;
+static const uint8_t servo5Pin = 12;
+static const uint8_t servo6Pin = 13;
 
 struct target {
   uint8_t number;
@@ -68,7 +68,6 @@ target allTargets[targetCount] = {
 };
 
 volatile int interruptCounter;
-int totalInterruptCounter;
  
 hw_timer_t * timer = NULL;
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
@@ -321,15 +320,16 @@ void run250msloop(){
       }
     }
     
-    const int capacity = JSON_OBJECT_SIZE(7);
+    const int capacity = JSON_OBJECT_SIZE(16);
     StaticJsonDocument<capacity> json;
     json["espTemp"] = espTemp;
-    json["lightSensor1"] = allTargets[1].lightSensorValue;
-    json["lightSensor2"] = allTargets[2].lightSensorValue;
-    json["lightSensor3"] = allTargets[3].lightSensorValue;
-    json["lightSensor4"] = allTargets[4].lightSensorValue;
-    json["lightSensor5"] = allTargets[5].lightSensorValue;
-    json["lightSensor6"] = allTargets[6].lightSensorValue;
+
+    char sensorName[13];
+    for (int i = 0; i < targetCount; i++){
+      sprintf(sensorName, "lightSensor%d", i + 1);
+      json[sensorName] = allTargets[i].lightSensorValue;
+    }
+    
     char jsonOutput[128];
     serializeJson(json, jsonOutput);
     ws.textAll(jsonOutput);
