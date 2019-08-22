@@ -28,17 +28,17 @@ int tempCounter = 0;
 int tempCounterReset = 4;
 int espTemp = 4;
 
-const uint8_t targetUpServoMs = 1800;
-const uint8_t targetDownServoMs = 800;
+const uint16_t targetUpServoMs = 1800;
+const uint16_t targetDownServoMs = 800;
 
-const uint8_t lightSensorTriggerMax = 100;
+const uint16_t lightSensorTriggerMax = 300;
 
 const uint8_t lightSensor1Pin = 36;
 const uint8_t lightSensor2Pin = 39;
 const uint8_t lightSensor3Pin = 34;
 const uint8_t lightSensor4Pin = 35;
 const uint8_t lightSensor5Pin = 32;
-const uint8_t lightSensor6Pin = 22;
+const uint8_t lightSensor6Pin = 33;
 
 static const uint8_t servo1Pin = 25;
 static const uint8_t servo2Pin = 26;
@@ -163,10 +163,10 @@ void setup(){
     allTargets[i].servo.attach(allTargets[i].servoPin,Servo::CHANNEL_NOT_ATTACHED, 0, 180, 0, 2400);
     allTargets[i].servo.writeMicroseconds(800);
   }
-  delay(100);
-  for (int i = 0; i < targetCount; i++){
-    allTargets[i].servo.writeMicroseconds(0);
-  }
+//  delay(100);
+//   for (int i = 0; i < targetCount; i++){
+//    allTargets[i].servo.writeMicroseconds(0);
+//  }
   
   //analogReadResolution(11);
   //analogSetAttenuation(ADC_6db);
@@ -305,22 +305,40 @@ void run250msloop(){
     digitalWrite(LedStatusPin,  LedStatusState);
 
     for (int i = 0; i < targetCount; i++){
+//        Serial.print("Read Pin ");
+//        Serial.print(allTargets[i].lightSensorPin);
+//        Serial.print(" = ");
+//        Serial.println(allTargets[i].lightSensorValue);
+        
       allTargets[i].lightSensorValue = analogRead(allTargets[i].lightSensorPin);
       if(allTargets[i].lightSensorValue < lightSensorTriggerMax){
         allTargets[i].servoResetCounter = 4;
+        
+//        Serial.print("Servo ");
+//        Serial.print(i+1);
+//        Serial.println(" Trigger");
       }
       if(allTargets[i].servoResetCounter>0){
+        
         allTargets[i].servoResetCounter--;
         if(allTargets[i].servoResetCounter==3){
+          
+//          Serial.print("Servo ");
+//          Serial.print(i+1);
+//          Serial.println(" Up");
+        
           allTargets[i].servo.writeMicroseconds(targetUpServoMs);
         }
         if(allTargets[i].servoResetCounter==1){
+//          Serial.print("Servo ");
+//          Serial.print(i+1);
+//          Serial.println(" Down");
           allTargets[i].servo.writeMicroseconds(targetDownServoMs);
         }
       }
     }
     
-    const int capacity = JSON_OBJECT_SIZE(16);
+    const int capacity = JSON_OBJECT_SIZE(20);
     StaticJsonDocument<capacity> json;
     json["espTemp"] = espTemp;
 
