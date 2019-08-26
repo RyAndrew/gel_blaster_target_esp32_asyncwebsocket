@@ -111,10 +111,14 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
       }
       Serial.printf("%s\n",msg.c_str());
 
-      if(info->opcode == WS_TEXT)
+      if(info->opcode == WS_TEXT){
         client->text("I got your text message");
-      else
-        client->binary("I got your binary message");
+        Serial.println("recvd websocket message!");
+        Serial.println(msg);
+        handleClientJsonData(msg);
+      }else{
+            client->binary("I got your binary message");
+      }
     } else {
       //message is comprised of multiple frames or the frame is split into multiple packets
       if(info->index == 0){
@@ -152,6 +156,27 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
   }
 }
 
+void handleClientJsonData(String data){
+  StaticJsonDocument<200> decodedJsonString;
+  
+  DeserializationError errorDecode = deserializeJson(decodedJsonString, data);
+  // Test if parsing succeeds.
+  if (errorDecode) {
+    Serial.print(F("deserializeJson() failed: "));
+    Serial.println(errorDecode.c_str());
+    return;
+  }
+  //JsonObject decodedJsonObject = decodedJsonString.to<JsonObject>();
+    JsonVariant errorSetMode = decodedJsonString["setMode"];
+    if (errorSetMode.isNull()) {
+      Serial.println("setMode not found");
+      return;
+    }
+    Serial.print("setMode=");
+    String setModeValue = errorSetMode.as<String>();
+    Serial.println(errorSetMode.as<String>());
+    Serial.println(setModeValue);
+}
 
 void setup(){
   Serial.begin(115200);
@@ -175,11 +200,18 @@ void setup(){
   WiFi.setSleep(false);
   //WiFi.softAP(hostName);
   WiFi.begin(ssid, password);
+
+Serial.print(F("Wifi Mac: "));
+  Serial.println(WiFi.macAddress());
+  
   if (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    Serial.printf("STA: Failed!\n");
+    Serial.println(F("Wifi STA: Failed!\n"));
     WiFi.disconnect(false);
     delay(1000);
     WiFi.begin(ssid, password);
+  }else{
+  Serial.println(F("Wifi Connected!"));
+  Serial.println(WiFi.localIP());
   }
 
   //Send OTA events to the browser
