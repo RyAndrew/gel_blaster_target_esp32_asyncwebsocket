@@ -13,7 +13,7 @@
 
 const char* ssid = "wifinamehere";
 const char* password = "wifipasswordhere";
-const char * hostName = "esp-async";
+
 const char* http_username = "admin";
 const char* http_password = "admin";
 
@@ -167,22 +167,22 @@ void handleClientJsonData(String data){
     return;
   }
   //JsonObject decodedJsonObject = decodedJsonString.to<JsonObject>();
-    JsonVariant errorSetMode = decodedJsonString["setMode"];
-    if (errorSetMode.isNull()) {
-      Serial.println("setMode not found");
+    JsonVariant jsonCmd = decodedJsonString["cmd"];
+    if (jsonCmd.isNull()) {
+      Serial.println("cmd not found");
       return;
     }
-    Serial.print("setMode=");
-    String setModeValue = errorSetMode.as<String>();
-    Serial.println(errorSetMode.as<String>());
-    Serial.println(setModeValue);
+    Serial.print("jsonCmd=");
+    String cmdString = jsonCmd.as<String>();
+    Serial.println(jsonCmd.as<String>());
+    Serial.println(cmdString);
 }
 
 void setup(){
   Serial.begin(115200);
   Serial.setDebugOutput(true);
 
-  Serial.println("Booting");
+  Serial.println(F("Booting"));
 
   for (int i = 0; i < targetCount; i++){
     allTargets[i].servo.attach(allTargets[i].servoPin,Servo::CHANNEL_NOT_ATTACHED, 0, 180, 0, 2400);
@@ -195,14 +195,26 @@ void setup(){
   
   //analogReadResolution(11);
   //analogSetAttenuation(ADC_6db);
+
+  char mac[18];
+  WiFi.macAddress().toCharArray(mac,18);
+  
+  Serial.print(F("Wifi Mac: ")); Serial.println(mac);
+  
+  char hostName[24];
+  sprintf(hostName,"MagicTarget%c%c%c%c",mac[12],mac[13],mac[15],mac[16]);
+  Serial.print(F("HostName: ")); Serial.println(hostName);
+
   
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
   //WiFi.softAP(hostName);
+  
+  WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE);
+WiFi.setHostname(hostName);
+
   WiFi.begin(ssid, password);
 
-Serial.print(F("Wifi Mac: "));
-  Serial.println(WiFi.macAddress());
   
   if (WiFi.waitForConnectResult() != WL_CONNECTED) {
     Serial.println(F("Wifi STA: Failed!\n"));
@@ -324,6 +336,20 @@ Serial.print(F("Wifi Mac: "));
   pinMode(LedStatusPin,OUTPUT);
 }
 
+void sendTargetDownMessage(int targetNo){
+
+    const int capacity = JSON_OBJECT_SIZE(2);
+    StaticJsonDocument<capacity> json;
+    json["cmd"] = "targetDown";
+    json["target"] = targetNo;
+    
+    char jsonOutput[40];
+    serializeJson(json, jsonOutput);
+    ws.textAll(jsonOutput);
+
+    Serial.println(jsonOutput);
+
+}
 
 void run250msloop(){
 
@@ -343,9 +369,11 @@ void run250msloop(){
 //        Serial.println(allTargets[i].lightSensorValue);
         
       allTargets[i].lightSensorValue = analogRead(allTargets[i].lightSensorPin);
-      if(allTargets[i].lightSensorValue < lightSensorTriggerMax){
+      if(allTargets[i].lightSensorValue > 5 && allTargets[i].lightSensorValue < lightSensorTriggerMax){
         allTargets[i].servoResetCounter = 4;
-        
+
+        sendTargetDownMessage(i);
+
 //        Serial.print("Servo ");
 //        Serial.print(i+1);
 //        Serial.println(" Trigger");
@@ -382,7 +410,7 @@ void run250msloop(){
     
     char jsonOutput[128];
     serializeJson(json, jsonOutput);
-    ws.textAll(jsonOutput);
+//    ws.textAll(jsonOutput);
 
     Serial.println(jsonOutput);
 
