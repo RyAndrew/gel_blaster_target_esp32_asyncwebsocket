@@ -49,6 +49,7 @@ static const uint8_t servo6Pin = 13;
 
 struct target {
   uint8_t number;
+  uint8_t enabled;
   uint16_t lightSensorValue;
   uint8_t lightSensorPin;
   uint8_t servoPin;
@@ -59,12 +60,12 @@ struct target {
 static const uint8_t targetCount = 6;
 
 target allTargets[targetCount] = {
-  { 1, 0, lightSensor1Pin, servo1Pin, 0 },
-  { 2, 0, lightSensor2Pin, servo2Pin, 0 },
-  { 3, 0, lightSensor3Pin, servo3Pin, 0 },
-  { 4, 0, lightSensor4Pin, servo4Pin, 0 },
-  { 5, 0, lightSensor5Pin, servo5Pin, 0 },
-  { 6, 0, lightSensor6Pin, servo6Pin, 0 }
+  { 1, 0, 0, lightSensor1Pin, servo1Pin, 0 },
+  { 2, 0, 0, lightSensor2Pin, servo2Pin, 0 },
+  { 3, 0, 0, lightSensor3Pin, servo3Pin, 0 },
+  { 4, 0, 0, lightSensor4Pin, servo4Pin, 0 },
+  { 5, 0, 0, lightSensor5Pin, servo5Pin, 0 },
+  { 6, 0, 0, lightSensor6Pin, servo6Pin, 0 }
 };
 
 volatile int interruptCounter;
@@ -334,6 +335,42 @@ WiFi.setHostname(hostName);
   digitalWrite(LedStatusPin,  LedStatusState);
 
   pinMode(LedStatusPin,OUTPUT);
+
+  String configFile = "config.json";
+  
+  if (SPIFFS.exists(configFile)) {
+    File file = SPIFFS.open(configFile, "r");
+    uint16_t configFileSize = file.size();
+    char configFileContents[configFileSize];
+    file.readBytes(configFileContents, configFileSize);
+     file.close();
+     Serial.println(configFileContents);
+  }else{
+    Serial.print("config file ");
+    Serial.print(configFile);
+    Serial.println(" not found");
+  }
+
+
+    for (int i = 0; i < targetCount; i++){
+//        Serial.print("Read Pin ");
+//        Serial.print(allTargets[i].lightSensorPin);
+//        Serial.print(" = ");
+//        Serial.println(allTargets[i].lightSensorValue);
+        
+      allTargets[i].lightSensorValue = analogRead(allTargets[i].lightSensorPin);
+
+      Serial.print("Target ");
+      Serial.print(i+1);
+      if(allTargets[i].lightSensorValue > 400){
+        allTargets[i].enabled = 1;
+        Serial.println("Enabled");
+      }else{
+        allTargets[i].lightSensorValue = 0;
+        Serial.println("Disabled");
+      }
+    }
+  
 }
 
 void sendTargetDownMessage(int targetNo){
@@ -367,12 +404,15 @@ void run250msloop(){
 //        Serial.print(allTargets[i].lightSensorPin);
 //        Serial.print(" = ");
 //        Serial.println(allTargets[i].lightSensorValue);
-        
+
+      if(allTargets[i].enabled == 0){
+        continue;
+      }
       allTargets[i].lightSensorValue = analogRead(allTargets[i].lightSensorPin);
-      if(allTargets[i].lightSensorValue > 5 && allTargets[i].lightSensorValue < lightSensorTriggerMax){
+      if( allTargets[i].lightSensorValue < lightSensorTriggerMax){
         allTargets[i].servoResetCounter = 4;
 
-        sendTargetDownMessage(i);
+        sendTargetDownMessage(i+1);
 
 //        Serial.print("Servo ");
 //        Serial.print(i+1);
