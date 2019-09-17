@@ -1,3 +1,5 @@
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <ArduinoOTA.h>
@@ -7,6 +9,7 @@
 #include <ESPAsyncWebServer.h>
 #include <SPIFFSEditor.h>
 #include <Servo.h>
+
 
 #include <AsyncJson.h>
 #include <ArduinoJson.h>
@@ -27,6 +30,11 @@ int LedStatusState = HIGH;
 int tempCounter = 0;
 int tempCounterReset = 4;
 int espTemp = 4;
+
+const uint8_t MODE_AUTO = 1;
+const uint8_t MODE_MANUAL = 2;
+const uint8_t MODE_ALL = 3;
+uint8_t currentMode = MODE_AUTO;
 
 const uint16_t targetUpServoMs = 1800;
 const uint16_t targetDownServoMs = 800;
@@ -49,6 +57,7 @@ static const uint8_t servo6Pin = 13;
 
 struct target {
   uint8_t number;
+  uint8_t down;
   uint8_t enabled;
   uint16_t lightSensorValue;
   uint8_t lightSensorPin;
@@ -60,12 +69,12 @@ struct target {
 static const uint8_t targetCount = 6;
 
 target allTargets[targetCount] = {
-  { 1, 0, 0, lightSensor1Pin, servo1Pin, 0 },
-  { 2, 0, 0, lightSensor2Pin, servo2Pin, 0 },
-  { 3, 0, 0, lightSensor3Pin, servo3Pin, 0 },
-  { 4, 0, 0, lightSensor4Pin, servo4Pin, 0 },
-  { 5, 0, 0, lightSensor5Pin, servo5Pin, 0 },
-  { 6, 0, 0, lightSensor6Pin, servo6Pin, 0 }
+  { 1, 0, 0, 0, lightSensor1Pin, servo1Pin, 0 },
+  { 2, 0, 0, 0, lightSensor2Pin, servo2Pin, 0 },
+  { 3, 0, 0, 0, lightSensor3Pin, servo3Pin, 0 },
+  { 4, 0, 0, 0, lightSensor4Pin, servo4Pin, 0 },
+  { 5, 0, 0, 0, lightSensor5Pin, servo5Pin, 0 },
+  { 6, 0, 0, 0, lightSensor6Pin, servo6Pin, 0 }
 };
 
 volatile int interruptCounter;
@@ -113,7 +122,7 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
       Serial.printf("%s\n",msg.c_str());
 
       if(info->opcode == WS_TEXT){
-        client->text("I got your text message");
+        client->text("{\"success\":true}");
         Serial.println("recvd websocket message!");
         Serial.println(msg);
         handleClientJsonData(msg);
@@ -147,10 +156,14 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
         Serial.printf("ws[%s][%u] frame[%u] end[%llu]\n", server->url(), client->id(), info->num, info->len);
         if(info->final){
           Serial.printf("ws[%s][%u] %s-message end\n", server->url(), client->id(), (info->message_opcode == WS_TEXT)?"text":"binary");
-          if(info->message_opcode == WS_TEXT)
-            client->text("I got your text message");
-          else
+          if(info->message_opcode == WS_TEXT){
+              client->text("{\"success\":true}");
+              Serial.println("recvd websocket message!");
+              Serial.println(msg);
+              handleClientJsonData(msg);
+          }else{
             client->binary("I got your binary message");
+          }
         }
       }
     }
@@ -158,9 +171,9 @@ void onWsEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventT
 }
 
 void handleClientJsonData(String data){
-  StaticJsonDocument<200> decodedJsonString;
+  StaticJsonDocument<200> decodedJson;
   
-  DeserializationError errorDecode = deserializeJson(decodedJsonString, data);
+  DeserializationError errorDecode = deserializeJson(decodedJson, data);
   // Test if parsing succeeds.
   if (errorDecode) {
     Serial.print(F("deserializeJson() failed: "));
@@ -168,15 +181,62 @@ void handleClientJsonData(String data){
     return;
   }
   //JsonObject decodedJsonObject = decodedJsonString.to<JsonObject>();
-    JsonVariant jsonCmd = decodedJsonString["cmd"];
+    JsonVariant jsonCmd = decodedJson["cmd"];
     if (jsonCmd.isNull()) {
       Serial.println("cmd not found");
       return;
     }
-    Serial.print("jsonCmd=");
+    Serial.println("json cmd received!");
     String cmdString = jsonCmd.as<String>();
-    Serial.println(jsonCmd.as<String>());
+
     Serial.println(cmdString);
+    
+    if(cmdString == "mode"){
+      JsonVariant jsonValue = decodedJson["value"];
+      if (jsonValue.isNull()){
+        Serial.println("mode value not found");
+        return;
+      }
+      
+      if(jsonValue.as<String>() == "all"){
+        Serial.println("command mode = all");
+        currentMode = MODE_ALL;
+        return;
+      }
+      if(jsonValue.as<String>() == "auto"){
+        Serial.println("command mode = auto");
+        currentMode = MODE_AUTO;
+        return;
+      }
+      if(jsonValue.as<String>() == "manual"){
+        Serial.println("command mode = manual");
+        currentMode = MODE_MANUAL;
+        return;
+      }
+      Serial.println("mode invalid value");
+      return;
+    }
+    if(cmdString == "targetUp"){
+      JsonVariant jsonValue = decodedJson["value"];
+      if (jsonValue.isNull()){
+        Serial.println("targetUp value not found");
+        return;
+      }
+      if(jsonValue.as<String>() == "all"){
+        Serial.println("command targetUp = all");
+        putAllTargetsUp();
+        return;
+      }else{
+       int targetNo = jsonValue.as<unsigned int>();
+       if(targetNo == 0 || targetNo > 6){
+        Serial.print("command targetUp value invalid");
+        return;
+        }
+        Serial.print("command targetUp = ");
+        Serial.println(targetNo);
+        allTargets[targetNo-1].servoResetCounter = 4;
+      }
+    }
 }
 
 void setup(){
@@ -185,12 +245,12 @@ void setup(){
 
   Serial.println(F("Booting"));
 
-  for (int i = 0; i < targetCount; i++){
+  for (uint8_t i = 0; i < targetCount; i++){
     allTargets[i].servo.attach(allTargets[i].servoPin,Servo::CHANNEL_NOT_ATTACHED, 0, 180, 0, 2400);
     allTargets[i].servo.writeMicroseconds(800);
   }
 //  delay(100);
-//   for (int i = 0; i < targetCount; i++){
+//   for (uint8_t i = 0; i < targetCount; i++){
 //    allTargets[i].servo.writeMicroseconds(0);
 //  }
   
@@ -206,6 +266,7 @@ void setup(){
   sprintf(hostName,"MagicTarget%c%c%c%c",mac[12],mac[13],mac[15],mac[16]);
   Serial.print(F("HostName: ")); Serial.println(hostName);
 
+WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector
   
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
@@ -223,8 +284,8 @@ WiFi.setHostname(hostName);
     delay(1000);
     WiFi.begin(ssid, password);
   }else{
-  Serial.println(F("Wifi Connected!"));
-  Serial.println(WiFi.localIP());
+    Serial.println(F("Wifi Connected!"));
+    Serial.println(WiFi.localIP());
   }
 
   //Send OTA events to the browser
@@ -352,7 +413,7 @@ WiFi.setHostname(hostName);
   }
 
 
-    for (int i = 0; i < targetCount; i++){
+    for (uint8_t i = 0; i < targetCount; i++){
 //        Serial.print("Read Pin ");
 //        Serial.print(allTargets[i].lightSensorPin);
 //        Serial.print(" = ");
@@ -364,10 +425,10 @@ WiFi.setHostname(hostName);
       Serial.print(i+1);
       if(allTargets[i].lightSensorValue > 400){
         allTargets[i].enabled = 1;
-        Serial.println("Enabled");
+        Serial.println(" Enabled");
       }else{
         allTargets[i].lightSensorValue = 0;
-        Serial.println("Disabled");
+        Serial.println(" Disabled");
       }
     }
   
@@ -387,7 +448,30 @@ void sendTargetDownMessage(int targetNo){
     Serial.println(jsonOutput);
 
 }
-
+void putAllTargetsUp(){
+    for (uint8_t i = 0; i < targetCount; i++){
+      if(allTargets[i].enabled == 1){
+        allTargets[i].servoResetCounter = 4;
+      }
+    }
+}
+void checkIfAllKnocked(){
+    uint8_t knockedCount = 0;
+    uint8_t enabledCount = 0;
+    for (uint8_t i = 0; i < targetCount; i++){
+      if(allTargets[i].enabled == 1){
+        enabledCount++;
+      }else{
+        continue;
+      }
+      if(allTargets[i].down == 1){
+        knockedCount++;
+      }
+    }
+    if(knockedCount == enabledCount){
+      putAllTargetsUp();
+    }
+}
 void run250msloop(){
 
   if(tempCounter==0){
@@ -399,7 +483,7 @@ void run250msloop(){
     LedStatusState = not(LedStatusState);
     digitalWrite(LedStatusPin,  LedStatusState);
 
-    for (int i = 0; i < targetCount; i++){
+    for (uint8_t i = 0; i < targetCount; i++){
 //        Serial.print("Read Pin ");
 //        Serial.print(allTargets[i].lightSensorPin);
 //        Serial.print(" = ");
@@ -408,16 +492,28 @@ void run250msloop(){
       if(allTargets[i].enabled == 0){
         continue;
       }
-      allTargets[i].lightSensorValue = analogRead(allTargets[i].lightSensorPin);
-      if( allTargets[i].lightSensorValue < lightSensorTriggerMax){
-        allTargets[i].servoResetCounter = 4;
-
-        sendTargetDownMessage(i+1);
-
-//        Serial.print("Servo ");
-//        Serial.print(i+1);
-//        Serial.println(" Trigger");
+      if(allTargets[i].down == 0){
+        allTargets[i].lightSensorValue = analogRead(allTargets[i].lightSensorPin);
+        if( allTargets[i].lightSensorValue < lightSensorTriggerMax){
+  
+          sendTargetDownMessage(i+1);
+          
+          allTargets[i].down = 1;
+  
+          if(currentMode == MODE_AUTO){
+            allTargets[i].servoResetCounter = 4;
+          }
+          if(currentMode == MODE_ALL){
+            checkIfAllKnocked();
+          }
+  
+  
+  //        Serial.print("Servo ");
+  //        Serial.print(i+1);
+  //        Serial.println(" Trigger");
+        }
       }
+
       if(allTargets[i].servoResetCounter>0){
         
         allTargets[i].servoResetCounter--;
@@ -433,6 +529,7 @@ void run250msloop(){
 //          Serial.print("Servo ");
 //          Serial.print(i+1);
 //          Serial.println(" Down");
+          allTargets[i].down = 0;
           allTargets[i].servo.writeMicroseconds(targetDownServoMs);
         }
       }
@@ -443,7 +540,7 @@ void run250msloop(){
     json["espTemp"] = espTemp;
 
     char sensorName[13];
-    for (int i = 0; i < targetCount; i++){
+    for (uint8_t i = 0; i < targetCount; i++){
       sprintf(sensorName, "lightSensor%d", i + 1);
       json[sensorName] = allTargets[i].lightSensorValue;
     }
