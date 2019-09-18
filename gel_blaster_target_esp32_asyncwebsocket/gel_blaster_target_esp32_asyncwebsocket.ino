@@ -531,6 +531,7 @@ void run250msloop(){
           if(allTargets[i].down == 0){
             sendTargetDownMessage(i+1);
   
+            allTargets[i].down = 1;
             //only check if all knocked if we have a status change
             if(currentMode == MODE_ALL){
               checkIfAllKnocked();
@@ -567,7 +568,8 @@ void run250msloop(){
           allTargets[i].servo.writeMicroseconds(targetDownServoMs);
         }
       }else{
-        if(allTargets[i].down == 1){
+        if(currentMode == MODE_AUTO && allTargets[i].down == 1){
+          
           Serial.print("Target ");
           Serial.print(i+1);
           Serial.println(" May Be Jammed");
