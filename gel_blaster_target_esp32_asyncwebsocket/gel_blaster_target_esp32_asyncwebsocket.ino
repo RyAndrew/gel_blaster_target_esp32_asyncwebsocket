@@ -450,6 +450,20 @@ WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); //disable brownout detector
   
 }
 
+void sendTargetJammedMessage(int targetNo){
+
+    const int capacity = JSON_OBJECT_SIZE(2);
+    StaticJsonDocument<capacity> json;
+    json["cmd"] = "targetJammed";
+    json["target"] = targetNo;
+    
+    char jsonOutput[40];
+    serializeJson(json, jsonOutput);
+    ws.textAll(jsonOutput);
+
+    Serial.println(jsonOutput);
+
+}
 void sendTargetDownMessage(int targetNo){
 
     const int capacity = JSON_OBJECT_SIZE(2);
@@ -508,45 +522,56 @@ void run250msloop(){
       if(allTargets[i].enabled == 0){
         continue;
       }
-      if(allTargets[i].down == 0){
+
         allTargets[i].lightSensorValue = analogRead(allTargets[i].lightSensorPin);
-        if( allTargets[i].lightSensorValue < lightSensorTriggerMax){
+        
+        if( allTargets[i].lightSensorValue >= lightSensorTriggerMax){
+          allTargets[i].down = 0;
+        }else{
+          if(allTargets[i].down == 0){
+            sendTargetDownMessage(i+1);
   
-          sendTargetDownMessage(i+1);
-          
+            //only check if all knocked if we have a status change
+            if(currentMode == MODE_ALL){
+              checkIfAllKnocked();
+            }
+            
+            if(currentMode == MODE_AUTO){
+              allTargets[i].servoResetCounter = 4;
+            }
+          }
+            
           allTargets[i].down = 1;
-  
-          if(currentMode == MODE_AUTO){
-            allTargets[i].servoResetCounter = 4;
-          }
-          if(currentMode == MODE_ALL){
-            checkIfAllKnocked();
-          }
-  
-  
-  //        Serial.print("Servo ");
-  //        Serial.print(i+1);
-  //        Serial.println(" Trigger");
+    
+    
+    //        Serial.print("Target ");
+    //        Serial.print(i+1);
+    //        Serial.println(" Trigger");
         }
-      }
 
       if(allTargets[i].servoResetCounter>0){
         
         allTargets[i].servoResetCounter--;
         if(allTargets[i].servoResetCounter==3){
           
-//          Serial.print("Servo ");
+//          Serial.print("Target ");
 //          Serial.print(i+1);
 //          Serial.println(" Up");
         
           allTargets[i].servo.writeMicroseconds(targetUpServoMs);
         }
         if(allTargets[i].servoResetCounter==1){
-//          Serial.print("Servo ");
+//          Serial.print("Target ");
 //          Serial.print(i+1);
 //          Serial.println(" Down");
-          allTargets[i].down = 0;
           allTargets[i].servo.writeMicroseconds(targetDownServoMs);
+        }
+      }else{
+        if(allTargets[i].down == 1){
+          Serial.print("Target ");
+          Serial.print(i+1);
+          Serial.println(" May Be Jammed");
+          sendTargetJammedMessage(i+1);
         }
       }
     }
